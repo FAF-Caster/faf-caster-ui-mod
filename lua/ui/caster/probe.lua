@@ -89,6 +89,13 @@ local function BuildPlayerRecord(armyId, score, gameTime, armyColor)
     AddString("name", Get(score, "name"))
     AddString("type", Get(score, "type"))
     AddNumber("faction", Get(score, "faction"))
+    -- FAF score.lua sets Defeated to a timestamp on defeat, then -1.
+    -- Only explicit defeat data marks an army eliminated.
+    if Get(score, "Defeated") ~= nil and Get(score, "Defeated") ~= false then
+        table.insert(fields, '"defeated":true')
+    else
+        table.insert(fields, '"defeated":false')
+    end
     if type(armyColor) == "string" and (string.match(armyColor, "^#?%x%x%x%x%x%x$") or string.match(armyColor, "^#?%x%x%x%x%x%x%x%x$")) then
         AddString("armyColor", armyColor)
     end
