@@ -320,8 +320,23 @@ local function OnSync(sync)
             end
         end
 
-        if sync.Events and sync.Events.ACUDestroyed then
-            Log("ACU destruction event received")
+        -- Native FAF ACU kill events; informational only, not a defeat inference.
+        local events = Get(sync, "Events")
+        local acuKills = Get(events, "ACUDestroyed")
+        if type(acuKills) == "table" then
+            for _, event in pairs(acuKills) do
+                if type(event) == "table" then
+                    local timestamp = tonumber(Get(event, "Timestamp"))
+                    local killer = tonumber(Get(event, "InstigatorArmy"))
+                    local victim = tonumber(Get(event, "KilledArmy"))
+                    if timestamp and killer and victim then
+                        LOG("[FAFCASTER:ACU_KILL] {" ..
+                            "\"gameTime\":" .. JsonNumber(timestamp) ..
+                            ",\"instigatorArmy\":" .. JsonNumber(killer) ..
+                            ",\"killedArmy\":" .. JsonNumber(victim) .. "}")
+                    end
+                end
+            end
         end
     end)
 
