@@ -232,48 +232,62 @@ local function ProbeCommanderAccess()
         " focusArmy=" .. tostring(GetFocusArmy()))
 end
 
--- Read-only diagnostic: inspect observer-visible synced entity IDs, without changing focus.
+-- Bounded observer diagnostic: sample incoming unit sync over multiple score updates.
+local commanderSyncSamples = 0
+local commanderSyncIds = 0
+local commanderResolved = 0
+local commanderFound = 0
+local commanderFocus = {}
+
 local function ProbeSyncedCommanderIds(sync)
-    if updateCount ~= 10 then
+    if commanderSyncSamples >= 30 then
         return
     end
 
-    local data = Get(sync, "UnitData")
-    local syncedCount = 0
-    local resolvedCount = 0
-    local commanderCount = 0
-    local sampleCount = 0
+    commanderSyncSamples = commanderSyncSamples + 1
+    local focus = tostring(GetFocusArmy())
+    commanderFocus[focus] = true
 
+    local data = Get(sync, "UnitData")
     if type(data) == "table" then
         for entityId, _ in pairs(data) do
-            syncedCount = syncedCount + 1
-            local unitOk, unit = pcall(GetUnitById, tonumber(entityId))
-            if unitOk and unit then
-                resolvedCount = resolvedCount + 1
-                local categoryOk, isCommander = pcall(function()
-                    return unit:IsInCategory("COMMAND")
-                end)
-                if categoryOk and isCommander then
-                    commanderCount = commanderCount + 1
-                    if sampleCount < 8 then
-                        sampleCount = sampleCount + 1
-                        local armyOk, army = pcall(function() return unit:GetArmy() end)
-                        local hpOk, hp = pcall(function() return unit:GetHealth() end)
-                        local maxOk, maxHp = pcall(function() return unit:GetMaxHealth() end)
-                        Log("Synced commander diagnostic: id=" .. tostring(entityId) ..
-                            " army=" .. tostring(armyOk and army or "unavailable") ..
-                            " health=" .. tostring(hpOk and hp or "unavailable") ..
-                            " maxHealth=" .. tostring(maxOk and maxHp or "unavailable"))
+            commanderSyncIds = commanderSyncIds + 1
+            local id = tonumber(entityId)
+            if id then
+                local unitOk, unit = pcall(GetUnitById, id)
+                if unitOk and unit then
+                    commanderResolved = commanderResolved + 1
+                    local categoryOk, isCommander = pcall(function()
+                        return unit:IsInCategory("COMMAND")
+                    end)
+                    if categoryOk and isCommander then
+                        commanderFound = commanderFound + 1
+                        if commanderFound <= 5 then
+                            local armyOk, army = pcall(function() return unit:GetArmy() end)
+                            local hpOk, hp = pcall(function() return unit:GetHealth() end)
+                            local maxOk, maxHp = pcall(function() return unit:GetMaxHealth() end)
+                            Log("Synced commander diagnostic: id=" .. tostring(id) ..
+                                " army=" .. tostring(armyOk and army or "unavailable") ..
+                                " health=" .. tostring(hpOk and hp or "unavailable") ..
+                                " maxHealth=" .. tostring(maxOk and maxHp or "unavailable"))
+                        end
                     end
                 end
             end
         end
     end
 
-    Log("Synced commander diagnostic: syncIds=" .. tostring(syncedCount) ..
-        " resolved=" .. tostring(resolvedCount) ..
-        " commanders=" .. tostring(commanderCount) ..
-        " focusArmy=" .. tostring(GetFocusArmy()))
+    if commanderSyncSamples == 1 or commanderSyncSamples == 10 or commanderSyncSamples == 30 then
+        local focuses = {}
+        for army, _ in pairs(commanderFocus) do
+            table.insert(focuses, army)
+        end
+        Log("Synced commander diagnostic: samples=" .. tostring(commanderSyncSamples) ..
+            " syncIds=" .. tostring(commanderSyncIds) ..
+            " resolved=" .. tostring(commanderResolved) ..
+            " commanders=" .. tostring(commanderFound) ..
+            " focusArmies=" .. table.concat(focuses, ","))
+    end
 end
 
 local function OnSync(sync)
@@ -295,11 +309,9 @@ local function OnSync(sync)
 
         if sync.Score then
             ProcessScore(sync.Score)
-            if updateCount == 10 then
-                local syncOk, syncErr = pcall(ProbeSyncedCommanderIds, sync)
-                if not syncOk then
-                    Log("Synced commander diagnostic failed: " .. tostring(syncErr))
-                end
+            local syncOk, syncErr = pcall(ProbeSyncedCommanderIds, sync)
+            if not syncOk then
+                Log("Synced commander diagnostic failed: " .. tostring(syncErr))
             end
             local diagnosticOk, diagnosticErr = pcall(ProbeCommanderAccess)
             if not diagnosticOk then
@@ -344,6 +356,11 @@ function Start(isReplay)
     updateCount = 0
     gameOverReported = false
     commanderDiagnosticReported = false
+    commanderSyncSamples = 0
+    commanderSyncIds = 0
+    commanderResolved = 0
+    commanderFound = 0
+    commanderFocus = {}
 
     AddOnSyncCallback(OnSync, CALLBACK_ID)
 
