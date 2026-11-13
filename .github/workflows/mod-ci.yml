@@ -86,12 +86,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mv FAF-Caster-UI-Mod.zip "FAF-Caster-UI-Mod-${TAG}.zip"
+          mv FAF-Caster-UI-Mod.zip "FAF-Caster-Bridge-${TAG}.zip"
           gh api "repos/${GH_REPO}/releases/generate-notes" -f tag_name="$TAG" -f target_commitish=main --jq '.body' > generated-changelog.md
           {
             echo "## Installation"
             echo
-            echo "1. Download the attached `FAF-Caster-UI-Mod-${TAG}.zip`."
+            echo "1. Download the attached `FAF-Caster-Bridge-${TAG}.zip`."
             echo "2. Extract the `FAF-Caster-UI-Mod` folder into your FAF UI mods directory."
             echo "3. Enable **FAF Caster Bridge** in FAF's UI mod selection."
             echo "4. Run the matching [FAF Caster Desktop](https://github.com/FAF-Caster/FAF-Caster/releases) application."
@@ -110,4 +110,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$TAG" "FAF-Caster-UI-Mod-${TAG}.zip" --draft --verify-tag --title "FAF Caster Bridge $TAG" --notes-file release-notes.md
+          gh release create "$TAG" "FAF-Caster-Bridge-${TAG}.zip" --draft --verify-tag --title "FAF Caster Bridge $TAG" --notes-file release-notes.md
