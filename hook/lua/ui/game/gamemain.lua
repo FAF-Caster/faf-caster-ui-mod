@@ -1,5 +1,5 @@
 
--- FAF Caster M1 Test
+-- FAF Caster Bridge
 -- Main game UI hook
 
 local OriginalCreateUI = CreateUI
@@ -9,7 +9,7 @@ function CreateUI(isReplay)
 
     LOG("[FAFCASTER] Game UI initialised")
 
-    local probePath = "/mods/FAF-Caster-UI-Agent/lua/ui/caster/probe.lua"
+    local probePath = "/mods/FAF-Caster-Bridge/lua/ui/caster/probe.lua"
 
     LOG("[FAFCASTER] Loading probe: " .. probePath)
 

@@ -31,6 +31,7 @@ jobs:
           grep -Eq 'uid[[:space:]]*=' mod_info.lua
           grep -Eq 'name[[:space:]]*=' mod_info.lua
           grep -Eq 'version[[:space:]]*=[[:space:]]*[0-9]+' mod_info.lua
+          grep -Fq '/mods/FAF-Caster-Bridge/lua/ui/caster/probe.lua' hook/lua/ui/game/gamemain.lua
           if grep -Eq 'FAF Caster Test|FAF-CASTER-TEST-001' mod_info.lua; then
             echo 'Release blocked: replace test mod name and UID before tagging.' >&2
             exit 1
@@ -39,25 +40,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p staging/FAF-Caster-UI-Mod dist
+          mkdir -p staging/FAF-Caster-Bridge dist
           git ls-files -z | while IFS= read -r -d '' file; do
             case "$file" in
               .github/*|.gitignore|README*|LICENSE*|docs/*|staging/*|dist/*) continue ;;
             esac
-            mkdir -p "staging/FAF-Caster-UI-Mod/$(dirname "$file")"
-            cp "$file" "staging/FAF-Caster-UI-Mod/$file"
+            mkdir -p "staging/FAF-Caster-Bridge/$(dirname "$file")"
+            cp "$file" "staging/FAF-Caster-Bridge/$file"
           done
-          test -f staging/FAF-Caster-UI-Mod/mod_info.lua
-          (cd staging && zip -qr ../dist/FAF-Caster-UI-Mod.zip FAF-Caster-UI-Mod)
-          unzip -l dist/FAF-Caster-UI-Mod.zip
-          unzip -t dist/FAF-Caster-UI-Mod.zip
-          test "$(unzip -Z1 dist/FAF-Caster-UI-Mod.zip | grep -c '^FAF-Caster-UI-Mod/mod_info.lua$')" -eq 1
-          test "$(unzip -Z1 dist/FAF-Caster-UI-Mod.zip | grep -c '^FAF-Caster-UI-Mod/icon.png$')" -eq 1
+          test -f staging/FAF-Caster-Bridge/mod_info.lua
+          (cd staging && zip -qr ../dist/FAF-Caster-Bridge.zip FAF-Caster-Bridge)
+          unzip -l dist/FAF-Caster-Bridge.zip
+          unzip -t dist/FAF-Caster-Bridge.zip
+          test "$(unzip -Z1 dist/FAF-Caster-Bridge.zip | grep -c '^FAF-Caster-Bridge/mod_info.lua$')" -eq 1
+          test "$(unzip -Z1 dist/FAF-Caster-Bridge.zip | grep -c '^FAF-Caster-Bridge/icon.png$')" -eq 1
       - name: Upload Mod Vault candidate
         uses: actions/upload-artifact@v4
         with:
-          name: FAF-Caster-UI-Mod
-          path: dist/FAF-Caster-UI-Mod.zip
+          name: FAF-Caster-Bridge
+          path: dist/FAF-Caster-Bridge.zip
           if-no-files-found: error
           retention-days: 14
 
@@ -74,7 +75,7 @@ jobs:
           persist-credentials: true
       - uses: actions/download-artifact@v4
         with:
-          name: FAF-Caster-UI-Mod
+          name: FAF-Caster-Bridge
       - name: Determine next stable version
         env:
           GH_TOKEN: ${{ github.token }}
@@ -105,10 +106,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p unpacked
-          unzip -q FAF-Caster-UI-Mod.zip -d unpacked
-          sed -i -E "s/^version[[:space:]]*=[[:space:]]*[0-9]+/version = ${RELEASE_NUMBER}/" unpacked/FAF-Caster-UI-Mod/mod_info.lua
-          grep -qx "version = ${RELEASE_NUMBER}" unpacked/FAF-Caster-UI-Mod/mod_info.lua
-          (cd unpacked && zip -qr "../FAF-Caster-Bridge-${RELEASE_TAG}.zip" FAF-Caster-UI-Mod)
+          unzip -q FAF-Caster-Bridge.zip -d unpacked
+          sed -i -E "s/^version[[:space:]]*=[[:space:]]*[0-9]+/version = ${RELEASE_NUMBER}/" unpacked/FAF-Caster-Bridge/mod_info.lua
+          grep -qx "version = ${RELEASE_NUMBER}" unpacked/FAF-Caster-Bridge/mod_info.lua
+          (cd unpacked && zip -qr "../FAF-Caster-Bridge-${RELEASE_TAG}.zip" FAF-Caster-Bridge)
           unzip -t "FAF-Caster-Bridge-${RELEASE_TAG}.zip"
       - name: Generate changelog and installation notes
         env:
@@ -122,7 +123,7 @@ jobs:
             echo "## Installation"
             echo
             echo '1. Download the attached `FAF-Caster-Bridge-'"$RELEASE_TAG"'.zip`.'
-            echo '2. Extract the `FAF-Caster-UI-Mod` folder into your FAF UI mods directory.'
+            echo '2. Extract the `FAF-Caster-Bridge` folder into your FAF UI mods directory.'
             echo "3. Enable **FAF Caster Bridge** in FAF's UI mod selection."
             echo "4. Run the matching [FAF Caster Desktop](https://github.com/FAF-Caster/FAF-Caster/releases) application."
             echo
