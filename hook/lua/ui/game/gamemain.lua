@@ -9,7 +9,7 @@ function CreateUI(isReplay)
 
     LOG("[FAFCASTER] Game UI initialised")
 
-    local probePath = "/mods/m1-test/lua/ui/caster/probe.lua"
+    local probePath = "/mods/FAF-Caster-UI-Agent/lua/ui/caster/probe.lua"
 
     LOG("[FAFCASTER] Loading probe: " .. probePath)
 
