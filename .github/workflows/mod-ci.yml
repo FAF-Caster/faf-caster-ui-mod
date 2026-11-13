@@ -1,0 +1,49 @@
+name: FAF UI Mod Package
+
+on:
+  push:
+    branches: [develop, main]
+    tags: ['v*']
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-mod:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate FAF UI mod metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f mod_info.lua
+          grep -Eq 'ui_only[[:space:]]*=[[:space:]]*true' mod_info.lua
+          grep -Eq 'uid[[:space:]]*=' mod_info.lua
+          grep -Eq 'name[[:space:]]*=' mod_info.lua
+      - name: Create Mod Vault ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p staging/FAF-Caster-UI-Mod dist
+          git ls-files -z | while IFS= read -r -d '' file; do
+            case "$file" in
+              .github/*|.gitignore|README*|LICENSE*|docs/*|staging/*|dist/*) continue ;;
+            esac
+            mkdir -p "staging/FAF-Caster-UI-Mod/$(dirname "$file")"
+            cp "$file" "staging/FAF-Caster-UI-Mod/$file"
+          done
+          test -f staging/FAF-Caster-UI-Mod/mod_info.lua
+          (cd staging && zip -qr ../dist/FAF-Caster-UI-Mod.zip FAF-Caster-UI-Mod)
+          unzip -l dist/FAF-Caster-UI-Mod.zip
+      - name: Upload Mod Vault candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: FAF-Caster-UI-Mod
+          path: dist/FAF-Caster-UI-Mod.zip
+          if-no-files-found: error
+          retention-days: 14
