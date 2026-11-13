@@ -9,6 +9,8 @@ local PLAYER_PREFIX = "[FAFCASTER:PLAYER] "
 
 local updateCount = 0
 local active = false
+local gameOverReported = false
+local commanderDiagnosticReported = false
 
 local function Log(message)
     LOG(PREFIX .. tostring(message))
@@ -89,6 +91,13 @@ local function BuildPlayerRecord(armyId, score, gameTime, armyColor)
     AddString("name", Get(score, "name"))
     AddString("type", Get(score, "type"))
     AddNumber("faction", Get(score, "faction"))
+    -- FAF score.lua sets Defeated to a timestamp on defeat, then -1.
+    -- Only explicit defeat data marks an army eliminated.
+    if Get(score, "Defeated") ~= nil and Get(score, "Defeated") ~= false then
+        table.insert(fields, '"defeated":true')
+    else
+        table.insert(fields, '"defeated":false')
+    end
     if type(armyColor) == "string" and (string.match(armyColor, "^#?%x%x%x%x%x%x$") or string.match(armyColor, "^#?%x%x%x%x%x%x%x%x$")) then
         AddString("armyColor", armyColor)
     end
@@ -177,6 +186,110 @@ local function ProcessScore(score)
     )
 end
 
+-- One-shot, read-only observer diagnostic. Does not change focus or emit player telemetry.
+local function ProbeCommanderAccess()
+    if commanderDiagnosticReported then
+        return
+    end
+    commanderDiagnosticReported = true
+
+    local ok, avatars = pcall(GetArmyAvatars)
+    if not ok or type(avatars) ~= "table" then
+        Log("Commander diagnostic: GetArmyAvatars unavailable (" .. tostring(avatars) .. ")")
+        return
+    end
+
+    local total = 0
+    local commanders = 0
+    local armyIds = {}
+    for _, unit in pairs(avatars) do
+        total = total + 1
+        local isCommanderOk, isCommander = pcall(function()
+            return unit:IsInCategory("COMMAND")
+        end)
+        if isCommanderOk and isCommander then
+            commanders = commanders + 1
+            local armyOk, army = pcall(function() return unit:GetArmy() end)
+            local healthOk, health = pcall(function() return unit:GetHealth() end)
+            local maxOk, maxHealth = pcall(function() return unit:GetMaxHealth() end)
+            local shieldOk, shield = pcall(function() return unit:GetShieldRatio() end)
+            if armyOk then
+                armyIds[tostring(army)] = true
+            end
+            Log("Commander diagnostic: army=" .. tostring(armyOk and army or "unavailable") ..
+                " health=" .. tostring(healthOk and health or "unavailable") ..
+                " maxHealth=" .. tostring(maxOk and maxHealth or "unavailable") ..
+                " shieldRatio=" .. tostring(shieldOk and shield or "unavailable"))
+        end
+    end
+
+    local armyCount = 0
+    for _, _ in pairs(armyIds) do
+        armyCount = armyCount + 1
+    end
+    Log("Commander diagnostic: avatars=" .. tostring(total) ..
+        " commanders=" .. tostring(commanders) .. " distinctArmies=" .. tostring(armyCount) ..
+        " focusArmy=" .. tostring(GetFocusArmy()))
+end
+
+-- Bounded observer diagnostic: sample incoming unit sync over multiple score updates.
+local commanderSyncSamples = 0
+local commanderSyncIds = 0
+local commanderResolved = 0
+local commanderFound = 0
+local commanderFocus = {}
+
+local function ProbeSyncedCommanderIds(sync)
+    if commanderSyncSamples >= 30 then
+        return
+    end
+
+    commanderSyncSamples = commanderSyncSamples + 1
+    local focus = tostring(GetFocusArmy())
+    commanderFocus[focus] = true
+
+    local data = Get(sync, "UnitData")
+    if type(data) == "table" then
+        for entityId, _ in pairs(data) do
+            commanderSyncIds = commanderSyncIds + 1
+            local id = tonumber(entityId)
+            if id then
+                local unitOk, unit = pcall(GetUnitById, id)
+                if unitOk and unit then
+                    commanderResolved = commanderResolved + 1
+                    local categoryOk, isCommander = pcall(function()
+                        return unit:IsInCategory("COMMAND")
+                    end)
+                    if categoryOk and isCommander then
+                        commanderFound = commanderFound + 1
+                        if commanderFound <= 5 then
+                            local armyOk, army = pcall(function() return unit:GetArmy() end)
+                            local hpOk, hp = pcall(function() return unit:GetHealth() end)
+                            local maxOk, maxHp = pcall(function() return unit:GetMaxHealth() end)
+                            Log("Synced commander diagnostic: id=" .. tostring(id) ..
+                                " army=" .. tostring(armyOk and army or "unavailable") ..
+                                " health=" .. tostring(hpOk and hp or "unavailable") ..
+                                " maxHealth=" .. tostring(maxOk and maxHp or "unavailable"))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if commanderSyncSamples == 1 or commanderSyncSamples == 10 or commanderSyncSamples == 30 then
+        local focuses = {}
+        for army, _ in pairs(commanderFocus) do
+            table.insert(focuses, army)
+        end
+        Log("Synced commander diagnostic: samples=" .. tostring(commanderSyncSamples) ..
+            " syncIds=" .. tostring(commanderSyncIds) ..
+            " resolved=" .. tostring(commanderResolved) ..
+            " commanders=" .. tostring(commanderFound) ..
+            " focusArmies=" .. table.concat(focuses, ","))
+    end
+end
+
 local function OnSync(sync)
     local success, err = pcall(function()
         if not active then
@@ -187,12 +300,43 @@ local function OnSync(sync)
             return
         end
 
-        if sync.Score then
-            ProcessScore(sync.Score)
+        -- UI session state is an explicit game-over signal; never infer a winner from army counts.
+        local stateOk, isOver = pcall(SessionIsGameOver)
+        if stateOk and isOver and not gameOverReported then
+            gameOverReported = true
+            LOG("[FAFCASTER:MATCH] {\"event\":\"ended\",\"gameTime\":" .. JsonNumber(GetGameTimeSeconds()) .. "}")
         end
 
-        if sync.Events and sync.Events.ACUDestroyed then
-            Log("ACU destruction event received")
+        if sync.Score then
+            ProcessScore(sync.Score)
+            local syncOk, syncErr = pcall(ProbeSyncedCommanderIds, sync)
+            if not syncOk then
+                Log("Synced commander diagnostic failed: " .. tostring(syncErr))
+            end
+            local diagnosticOk, diagnosticErr = pcall(ProbeCommanderAccess)
+            if not diagnosticOk then
+                commanderDiagnosticReported = true
+                Log("Commander diagnostic failed: " .. tostring(diagnosticErr))
+            end
+        end
+
+        -- Native FAF ACU kill events; informational only, not a defeat inference.
+        local events = Get(sync, "Events")
+        local acuKills = Get(events, "ACUDestroyed")
+        if type(acuKills) == "table" then
+            for _, event in pairs(acuKills) do
+                if type(event) == "table" then
+                    local timestamp = tonumber(Get(event, "Timestamp"))
+                    local killer = tonumber(Get(event, "InstigatorArmy"))
+                    local victim = tonumber(Get(event, "KilledArmy"))
+                    if timestamp and killer and victim then
+                        LOG("[FAFCASTER:ACU_KILL] {" ..
+                            "\"gameTime\":" .. JsonNumber(timestamp) ..
+                            ",\"instigatorArmy\":" .. JsonNumber(killer) ..
+                            ",\"killedArmy\":" .. JsonNumber(victim) .. "}")
+                    end
+                end
+            end
         end
     end)
 
@@ -225,6 +369,13 @@ function Start(isReplay)
 
     active = true
     updateCount = 0
+    gameOverReported = false
+    commanderDiagnosticReported = false
+    commanderSyncSamples = 0
+    commanderSyncIds = 0
+    commanderResolved = 0
+    commanderFound = 0
+    commanderFocus = {}
 
     AddOnSyncCallback(OnSync, CALLBACK_ID)
 
