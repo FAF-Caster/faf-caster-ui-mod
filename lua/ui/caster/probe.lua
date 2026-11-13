@@ -151,12 +151,54 @@ local function BuildPlayerRecord(armyId, score, gameTime, armyColor)
     return "{" .. table.concat(fields, ",") .. "}"
 end
 
+-- Stage 3.3 diagnostic: inspect only units exposed by the observer UI.
+-- GetArmyAvatars may be limited to the focused army; do not treat it as global enumeration.
+local function ProbeCommanderAvatars()
+    local ok, avatars = pcall(GetArmyAvatars)
+    if not ok or type(avatars) ~= "table" then
+        Log("Commander probe: GetArmyAvatars unavailable")
+        return
+    end
+
+    local count = 0
+    for _, unit in pairs(avatars) do
+        if unit then
+            local success, result = pcall(function()
+                if not unit:IsInCategory("COMMAND") then return nil end
+                local id = unit:GetEntityId()
+                local enhancements = import("/lua/enhancementcommon.lua").GetEnhancements(id)
+                local upgrades = {}
+                if type(enhancements) == "table" then
+                    for slot, enhancement in pairs(enhancements) do
+                        if type(slot) == "string" and type(enhancement) == "string" then
+                            table.insert(upgrades, JsonString(slot) .. ":" .. JsonString(enhancement))
+                        end
+                    end
+                end
+                return '{"armyId":' .. JsonNumber(unit:GetArmy()) ..
+                    ',"entityId":' .. JsonNumber(id) ..
+                    ',"health":' .. JsonNumber(unit:GetHealth()) ..
+                    ',"maxHealth":' .. JsonNumber(unit:GetMaxHealth()) ..
+                    ',"upgrades":{' .. table.concat(upgrades, ",") .. '}}'
+            end)
+            if success and result then
+                LOG("[FAFCASTER:COMMANDER:PROBE] " .. result)
+                count = count + 1
+            end
+        end
+    end
+    Log("Commander probe: " .. tostring(count) .. " visible command avatars (not necessarily all armies)")
+end
+
 local function ProcessScore(score)
     if type(score) ~= "table" then
         return
     end
 
     updateCount = updateCount + 1
+    if updateCount == 1 or updateCount % 10 == 0 then
+        ProbeCommanderAvatars()
+    end
 
     local gameTime = GetGameTimeSeconds()
     local playerCount = 0
