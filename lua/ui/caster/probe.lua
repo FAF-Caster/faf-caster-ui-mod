@@ -9,6 +9,7 @@ local PLAYER_PREFIX = "[FAFCASTER:PLAYER] "
 
 local updateCount = 0
 local active = false
+local gameOverReported = false
 
 local function Log(message)
     LOG(PREFIX .. tostring(message))
@@ -194,6 +195,12 @@ local function OnSync(sync)
             return
         end
 
+        -- UI session state is an explicit game-over signal; never infer a winner from army counts.
+        if not gameOverReported and SessionIsGameOver() then
+            gameOverReported = true
+            LOG("[FAFCASTER:MATCH] {\"event\":\"ended\",\"gameTime\":" .. JsonNumber(GetGameTimeSeconds()) .. "}")
+        end
+
         if sync.Score then
             ProcessScore(sync.Score)
         end
@@ -232,6 +239,7 @@ function Start(isReplay)
 
     active = true
     updateCount = 0
+    gameOverReported = false
 
     AddOnSyncCallback(OnSync, CALLBACK_ID)
 
