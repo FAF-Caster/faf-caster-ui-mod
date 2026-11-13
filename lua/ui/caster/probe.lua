@@ -232,6 +232,50 @@ local function ProbeCommanderAccess()
         " focusArmy=" .. tostring(GetFocusArmy()))
 end
 
+-- Read-only diagnostic: inspect observer-visible synced entity IDs, without changing focus.
+local function ProbeSyncedCommanderIds(sync)
+    if updateCount ~= 10 then
+        return
+    end
+
+    local data = Get(sync, "UnitData")
+    local syncedCount = 0
+    local resolvedCount = 0
+    local commanderCount = 0
+    local sampleCount = 0
+
+    if type(data) == "table" then
+        for entityId, _ in pairs(data) do
+            syncedCount = syncedCount + 1
+            local unitOk, unit = pcall(GetUnitById, tonumber(entityId))
+            if unitOk and unit then
+                resolvedCount = resolvedCount + 1
+                local categoryOk, isCommander = pcall(function()
+                    return unit:IsInCategory("COMMAND")
+                end)
+                if categoryOk and isCommander then
+                    commanderCount = commanderCount + 1
+                    if sampleCount < 8 then
+                        sampleCount = sampleCount + 1
+                        local armyOk, army = pcall(function() return unit:GetArmy() end)
+                        local hpOk, hp = pcall(function() return unit:GetHealth() end)
+                        local maxOk, maxHp = pcall(function() return unit:GetMaxHealth() end)
+                        Log("Synced commander diagnostic: id=" .. tostring(entityId) ..
+                            " army=" .. tostring(armyOk and army or "unavailable") ..
+                            " health=" .. tostring(hpOk and hp or "unavailable") ..
+                            " maxHealth=" .. tostring(maxOk and maxHp or "unavailable"))
+                    end
+                end
+            end
+        end
+    end
+
+    Log("Synced commander diagnostic: syncIds=" .. tostring(syncedCount) ..
+        " resolved=" .. tostring(resolvedCount) ..
+        " commanders=" .. tostring(commanderCount) ..
+        " focusArmy=" .. tostring(GetFocusArmy()))
+end
+
 local function OnSync(sync)
     local success, err = pcall(function()
         if not active then
@@ -251,6 +295,12 @@ local function OnSync(sync)
 
         if sync.Score then
             ProcessScore(sync.Score)
+            if updateCount == 10 then
+                local syncOk, syncErr = pcall(ProbeSyncedCommanderIds, sync)
+                if not syncOk then
+                    Log("Synced commander diagnostic failed: " .. tostring(syncErr))
+                end
+            end
             local diagnosticOk, diagnosticErr = pcall(ProbeCommanderAccess)
             if not diagnosticOk then
                 commanderDiagnosticReported = true
