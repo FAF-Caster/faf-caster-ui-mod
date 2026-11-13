@@ -50,7 +50,7 @@ local function JsonNumber(value)
     return tostring(Number(value))
 end
 
-local function BuildPlayerRecord(armyId, score, gameTime)
+local function BuildPlayerRecord(armyId, score, gameTime, armyColor)
     local resources = Get(score, "resources") or {}
     local general = Get(score, "general") or {}
     local units = Get(score, "units") or {}
@@ -89,6 +89,9 @@ local function BuildPlayerRecord(armyId, score, gameTime)
     AddString("name", Get(score, "name"))
     AddString("type", Get(score, "type"))
     AddNumber("faction", Get(score, "faction"))
+    if type(armyColor) == "string" and (string.match(armyColor, "^#?%x%x%x%x%x%x$") or string.match(armyColor, "^#?%x%x%x%x%x%x%x%x$")) then
+        AddString("armyColor", armyColor)
+    end
 
     -- Economy: mass
     AddNumber("massIncome", N(massIn, "rate"))
@@ -149,13 +152,16 @@ local function ProcessScore(score)
 
     local gameTime = GetGameTimeSeconds()
     local playerCount = 0
+    local armyTable = GetArmiesTable()
+    local armies = type(armyTable) == "table" and armyTable.armiesTable or nil
 
     for armyId, armyScore in pairs(score) do
         if type(armyScore) == "table" then
             local record = BuildPlayerRecord(
                 armyId,
                 armyScore,
-                gameTime
+                gameTime,
+                type(armies) == "table" and type(armies[armyId]) == "table" and armies[armyId].color or nil
             )
 
             LOG(PLAYER_PREFIX .. record)
