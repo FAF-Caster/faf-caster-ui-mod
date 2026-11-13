@@ -10,6 +10,7 @@ local PLAYER_PREFIX = "[FAFCASTER:PLAYER] "
 local updateCount = 0
 local active = false
 local gameOverReported = false
+local commanderDiagnosticReported = false
 
 local function Log(message)
     LOG(PREFIX .. tostring(message))
@@ -185,6 +186,52 @@ local function ProcessScore(score)
     )
 end
 
+-- One-shot, read-only observer diagnostic. Does not change focus or emit player telemetry.
+local function ProbeCommanderAccess()
+    if commanderDiagnosticReported then
+        return
+    end
+    commanderDiagnosticReported = true
+
+    local ok, avatars = pcall(GetArmyAvatars)
+    if not ok or type(avatars) ~= "table" then
+        Log("Commander diagnostic: GetArmyAvatars unavailable (" .. tostring(avatars) .. ")")
+        return
+    end
+
+    local total = 0
+    local commanders = 0
+    local armyIds = {}
+    for _, unit in pairs(avatars) do
+        total = total + 1
+        local isCommanderOk, isCommander = pcall(function()
+            return unit:IsInCategory("COMMAND")
+        end)
+        if isCommanderOk and isCommander then
+            commanders = commanders + 1
+            local armyOk, army = pcall(function() return unit:GetArmy() end)
+            local healthOk, health = pcall(function() return unit:GetHealth() end)
+            local maxOk, maxHealth = pcall(function() return unit:GetMaxHealth() end)
+            local shieldOk, shield = pcall(function() return unit:GetShieldRatio() end)
+            if armyOk then
+                armyIds[tostring(army)] = true
+            end
+            Log("Commander diagnostic: army=" .. tostring(armyOk and army or "unavailable") ..
+                " health=" .. tostring(healthOk and health or "unavailable") ..
+                " maxHealth=" .. tostring(maxOk and maxHealth or "unavailable") ..
+                " shieldRatio=" .. tostring(shieldOk and shield or "unavailable"))
+        end
+    end
+
+    local armyCount = 0
+    for _, _ in pairs(armyIds) do
+        armyCount = armyCount + 1
+    end
+    Log("Commander diagnostic: avatars=" .. tostring(total) ..
+        " commanders=" .. tostring(commanders) .. " distinctArmies=" .. tostring(armyCount) ..
+        " focusArmy=" .. tostring(GetFocusArmy()))
+end
+
 local function OnSync(sync)
     local success, err = pcall(function()
         if not active then
@@ -204,6 +251,11 @@ local function OnSync(sync)
 
         if sync.Score then
             ProcessScore(sync.Score)
+            local diagnosticOk, diagnosticErr = pcall(ProbeCommanderAccess)
+            if not diagnosticOk then
+                commanderDiagnosticReported = true
+                Log("Commander diagnostic failed: " .. tostring(diagnosticErr))
+            end
         end
 
         if sync.Events and sync.Events.ACUDestroyed then
@@ -241,6 +293,7 @@ function Start(isReplay)
     active = true
     updateCount = 0
     gameOverReported = false
+    commanderDiagnosticReported = false
 
     AddOnSyncCallback(OnSync, CALLBACK_ID)
 
