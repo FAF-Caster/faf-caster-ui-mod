@@ -1,9 +1,9 @@
 
-name = "FAF Caster Test"
-uid = "FAF-CASTER-TEST-001"
+name = "FAF Caster Bridge"
+uid = "b8e9f2a1-6c43-4d70-9a52-3f1c8e7b4d06"
 version = 1
 
-description = "Development test mod for observer telemetry and match statistics."
+description = "UI-only observer telemetry bridge for the FAF Caster desktop companion."
 author = "FAF Caster"
 
 selectable = true

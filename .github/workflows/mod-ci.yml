@@ -17,6 +17,18 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate stable release tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]{2}\.[0-9]{2}\.[0-9]+$ ]] || { echo 'Expected tag vYY.MM.N' >&2; exit 1; }
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main || { echo 'Release tags must point to main.' >&2; exit 1; }
       - name: Validate FAF UI mod metadata
         shell: bash
         run: |
@@ -25,6 +37,11 @@ jobs:
           grep -Eq 'ui_only[[:space:]]*=[[:space:]]*true' mod_info.lua
           grep -Eq 'uid[[:space:]]*=' mod_info.lua
           grep -Eq 'name[[:space:]]*=' mod_info.lua
+          grep -Eq 'version[[:space:]]*=[[:space:]]*[0-9]+' mod_info.lua
+          if [[ "$GITHUB_REF" == refs/tags/v* ]] && grep -Eq 'FAF Caster Test|FAF-CASTER-TEST-001' mod_info.lua; then
+            echo 'Release blocked: replace test mod name and UID before tagging.' >&2
+            exit 1
+          fi
       - name: Create Mod Vault ZIP
         shell: bash
         run: |
@@ -40,6 +57,9 @@ jobs:
           test -f staging/FAF-Caster-UI-Mod/mod_info.lua
           (cd staging && zip -qr ../dist/FAF-Caster-UI-Mod.zip FAF-Caster-UI-Mod)
           unzip -l dist/FAF-Caster-UI-Mod.zip
+          unzip -t dist/FAF-Caster-UI-Mod.zip
+          test "$(unzip -Z1 dist/FAF-Caster-UI-Mod.zip | grep -c '^FAF-Caster-UI-Mod/mod_info.lua$')" -eq 1
+          test "$(unzip -Z1 dist/FAF-Caster-UI-Mod.zip | grep -c '^FAF-Caster-UI-Mod/icon.png$')" -eq 1
       - name: Upload Mod Vault candidate
         uses: actions/upload-artifact@v4
         with:
@@ -47,3 +67,23 @@ jobs:
           path: dist/FAF-Caster-UI-Mod.zip
           if-no-files-found: error
           retention-days: 14
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package-mod
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: FAF-Caster-UI-Mod
+      - name: Create draft mod release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" FAF-Caster-UI-Mod.zip --draft --verify-tag --title "FAF Caster UI Mod $TAG" --generate-notes
