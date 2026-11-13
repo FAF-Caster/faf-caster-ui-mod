@@ -58,15 +58,8 @@ jobs:
           (cd staging && zip -qr ../dist/FAF-Caster-UI-Mod.zip FAF-Caster-UI-Mod)
           unzip -l dist/FAF-Caster-UI-Mod.zip
           unzip -t dist/FAF-Caster-UI-Mod.zip
-          test "$(unzip -Z1 dist/FAF-Caster-UI-Mod.zip | grep -c '^FAF-Caster-UI-Mod/mod_info.lua
-      - name: Upload Mod Vault candidate
-        uses: actions/upload-artifact@v4
-        with:
-          name: FAF-Caster-UI-Mod
-          path: dist/FAF-Caster-UI-Mod.zip
-          if-no-files-found: error
-          retention-days: 14
-)" -eq 1
+          test "$(unzip -Z1 dist/FAF-Caster-UI-Mod.zip | grep -c '^FAF-Caster-UI-Mod/mod_info.lua$')" -eq 1
+          test "$(unzip -Z1 dist/FAF-Caster-UI-Mod.zip | grep -c '^FAF-Caster-UI-Mod/icon.png$')" -eq 1
       - name: Upload Mod Vault candidate
         uses: actions/upload-artifact@v4
         with:
