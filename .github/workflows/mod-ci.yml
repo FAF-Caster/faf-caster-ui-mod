@@ -78,6 +78,30 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: FAF-Caster-UI-Mod
+      - name: Create versioned package and release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mv FAF-Caster-UI-Mod.zip "FAF-Caster-Bridge-${TAG}.zip"
+          gh api "repos/${GH_REPO}/releases/generate-notes" -f tag_name="$TAG" -f target_commitish=main --jq '.body' > generated-changelog.md
+          {
+            echo "## Installation"
+            echo
+            echo "1. Download the attached `FAF-Caster-Bridge-${TAG}.zip`."
+            echo "2. Extract the `FAF-Caster-UI-Mod` folder into your FAF UI mods directory."
+            echo "3. Enable **FAF Caster Bridge** in FAF's UI mod selection."
+            echo "4. Run the matching [FAF Caster Desktop](https://github.com/FAF-Caster/FAF-Caster/releases) application."
+            echo
+            echo "This GitHub release does not automatically publish the mod to the FAF Mod Vault."
+            echo
+            echo "## Changes"
+            echo
+            cat generated-changelog.md
+          } > release-notes.md
       - name: Create draft mod release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -86,4 +110,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          gh release create "$TAG" FAF-Caster-UI-Mod.zip --draft --verify-tag --title "FAF Caster UI Mod $TAG" --generate-notes
+          gh release create "$TAG" "FAF-Caster-Bridge-${TAG}.zip" --draft --verify-tag --title "FAF Caster Bridge $TAG" --notes-file release-notes.md
